@@ -1,0 +1,7 @@
+.gradle/
+build/
+bin/
+sistem_pakar.db
+.settings/
+.classpath
+.project
