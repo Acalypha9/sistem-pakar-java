@@ -48,6 +48,11 @@ source_code/
 
 1. Buka terminal atau command prompt dan arahkan ke direktori proyek (`source_code`).
 2. Jalankan perintah Gradle berikut untuk melakukan kompilasi dan menjalankan aplikasi:
+### Windows
+   ```bash
+   gradle run
+   ```
+### Linux
    ```bash
    ./gradlew run
    ```
@@ -57,7 +62,6 @@ source_code/
 ## Cara Build menjadi `.jar`
 
 Jika ingin membangun aplikasi menjadi sebuah file `.jar` yang *executable*, jalankan:
-
 ```bash
 ./gradlew jar
 ```
