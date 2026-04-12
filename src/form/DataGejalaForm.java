@@ -9,6 +9,7 @@ import java.sql.*;
 import java.util.Vector;
 
 public class DataGejalaForm extends JInternalFrame {
+    private JComboBox<String> cmbDiagnosisType;
     private JTextField txtId;
     private JComboBox<String> cmbOrgan;
     private JTextField txtNama;
@@ -49,8 +50,20 @@ public class DataGejalaForm extends JInternalFrame {
         gbc.insets = new Insets(6, 4, 6, 4);
         gbc.anchor = GridBagConstraints.NORTHWEST;
 
-        // ID
+        // Jenis Diagnosis
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
+        JLabel lblType = new JLabel("Jenis Diagnosis :");
+        lblType.setFont(UIStyle.FONT_LABEL);
+        lblType.setHorizontalAlignment(SwingConstants.RIGHT);
+        formPanel.add(lblType, gbc);
+
+        gbc.gridx = 1; gbc.weightx = 1.0;
+        cmbDiagnosisType = new JComboBox<>(new String[]{"infeksi", "gastrousus"});
+        cmbDiagnosisType.setPreferredSize(new Dimension(0, 24));
+        formPanel.add(cmbDiagnosisType, gbc);
+
+        // ID
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         JLabel lblId = new JLabel("Kode Gejala :");
         lblId.setFont(UIStyle.FONT_LABEL);
         lblId.setHorizontalAlignment(SwingConstants.RIGHT);
@@ -62,19 +75,19 @@ public class DataGejalaForm extends JInternalFrame {
         formPanel.add(txtId, gbc);
 
         // Organ
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
         JLabel lblOrgan = new JLabel("Organ :");
         lblOrgan.setFont(UIStyle.FONT_LABEL);
         lblOrgan.setHorizontalAlignment(SwingConstants.RIGHT);
         formPanel.add(lblOrgan, gbc);
 
         gbc.gridx = 1; gbc.weightx = 1.0;
-        cmbOrgan = new JComboBox<>(new String[]{"Pernafasan", "Infeksi Virus", "Metabolik", "Kardiovaskular"});
+        cmbOrgan = new JComboBox<>(new String[]{"Pernafasan", "Infeksi Virus", "Metabolik", "Kardiovaskular", "Gastrousus", "Riwayat Konsumsi"});
         cmbOrgan.setPreferredSize(new Dimension(0, 24));
         formPanel.add(cmbOrgan, gbc);
 
         // Nama Gejala
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0;
         JLabel lblNama = new JLabel("Nama Gejala :");
         lblNama.setFont(UIStyle.FONT_LABEL);
         lblNama.setHorizontalAlignment(SwingConstants.RIGHT);
@@ -97,7 +110,7 @@ public class DataGejalaForm extends JInternalFrame {
         buttonPanel.add(btnSimpan);
         buttonPanel.add(btnHapus);
 
-        gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
         gbc.insets = new Insets(20, 0, 0, 0);
         formPanel.add(buttonPanel, gbc);
 
@@ -107,7 +120,7 @@ public class DataGejalaForm extends JInternalFrame {
         splitPane.setLeftComponent(new JScrollPane(wrapperForm));
 
         // Table Panel (Right)
-        tableModel = new DefaultTableModel(new String[]{"Kode", "Organ", "Nama Gejala"}, 0) {
+        tableModel = new DefaultTableModel(new String[]{"Jenis", "Kode", "Organ", "Nama Gejala"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
         };
@@ -116,9 +129,10 @@ public class DataGejalaForm extends JInternalFrame {
         table.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting() && table.getSelectedRow() != -1) {
                 int row = table.getSelectedRow();
-                txtId.setText(table.getValueAt(row, 0).toString());
-                cmbOrgan.setSelectedItem(table.getValueAt(row, 1).toString());
-                txtNama.setText(table.getValueAt(row, 2).toString());
+                cmbDiagnosisType.setSelectedItem(table.getValueAt(row, 0).toString());
+                txtId.setText(table.getValueAt(row, 1).toString());
+                cmbOrgan.setSelectedItem(table.getValueAt(row, 2).toString());
+                txtNama.setText(table.getValueAt(row, 3).toString());
             }
         });
         JScrollPane tableScroll = new JScrollPane(table);
@@ -133,9 +147,10 @@ public class DataGejalaForm extends JInternalFrame {
         try {
             Connection conn = Database.getConnection();
             Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT * FROM gejala");
+            ResultSet rs = stmt.executeQuery("SELECT diagnosis_type, id_gejala, organ, nama_gejala FROM gejala ORDER BY diagnosis_type, CAST(id_gejala AS INTEGER), id_gejala");
             while (rs.next()) {
                 Vector<String> row = new Vector<>();
+                row.add(rs.getString("diagnosis_type"));
                 row.add(rs.getString("id_gejala"));
                 row.add(rs.getString("organ"));
                 row.add(rs.getString("nama_gejala"));
@@ -147,6 +162,7 @@ public class DataGejalaForm extends JInternalFrame {
     }
 
     private void simpanData() {
+        String diagnosisType = cmbDiagnosisType.getSelectedItem().toString();
         String id = txtId.getText();
         String organ = cmbOrgan.getSelectedItem().toString();
         String nama = txtNama.getText();
@@ -158,26 +174,29 @@ public class DataGejalaForm extends JInternalFrame {
 
         try {
             Connection conn = Database.getConnection();
-            String checkSql = "SELECT id_gejala FROM gejala WHERE id_gejala = ?";
+            String checkSql = "SELECT id_gejala FROM gejala WHERE diagnosis_type = ? AND id_gejala = ?";
             PreparedStatement pstmtCheck = conn.prepareStatement(checkSql);
-            pstmtCheck.setString(1, id);
+            pstmtCheck.setString(1, diagnosisType);
+            pstmtCheck.setString(2, id);
             ResultSet rs = pstmtCheck.executeQuery();
 
             if (rs.next()) {
                 // Update
-                String sql = "UPDATE gejala SET organ=?, nama_gejala=? WHERE id_gejala=?";
+                String sql = "UPDATE gejala SET organ=?, nama_gejala=? WHERE diagnosis_type=? AND id_gejala=?";
                 PreparedStatement pstmt = conn.prepareStatement(sql);
                 pstmt.setString(1, organ);
                 pstmt.setString(2, nama);
-                pstmt.setString(3, id);
+                pstmt.setString(3, diagnosisType);
+                pstmt.setString(4, id);
                 pstmt.executeUpdate();
             } else {
                 // Insert
-                String sql = "INSERT INTO gejala (id_gejala, organ, nama_gejala) VALUES (?, ?, ?)";
+                String sql = "INSERT INTO gejala (diagnosis_type, id_gejala, organ, nama_gejala) VALUES (?, ?, ?, ?)";
                 PreparedStatement pstmt = conn.prepareStatement(sql);
-                pstmt.setString(1, id);
-                pstmt.setString(2, organ);
-                pstmt.setString(3, nama);
+                pstmt.setString(1, diagnosisType);
+                pstmt.setString(2, id);
+                pstmt.setString(3, organ);
+                pstmt.setString(4, nama);
                 pstmt.executeUpdate();
             }
             JOptionPane.showMessageDialog(this, "Data berhasil disimpan!");
@@ -189,6 +208,7 @@ public class DataGejalaForm extends JInternalFrame {
     }
 
     private void hapusData() {
+        String diagnosisType = cmbDiagnosisType.getSelectedItem().toString();
         String id = txtId.getText();
         if (id.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Pilih data yang akan dihapus!");
@@ -199,9 +219,10 @@ public class DataGejalaForm extends JInternalFrame {
         if (confirm == JOptionPane.YES_OPTION) {
             try {
                 Connection conn = Database.getConnection();
-                String sql = "DELETE FROM gejala WHERE id_gejala=?";
+                String sql = "DELETE FROM gejala WHERE diagnosis_type=? AND id_gejala=?";
                 PreparedStatement pstmt = conn.prepareStatement(sql);
-                pstmt.setString(1, id);
+                pstmt.setString(1, diagnosisType);
+                pstmt.setString(2, id);
                 pstmt.executeUpdate();
                 JOptionPane.showMessageDialog(this, "Data berhasil dihapus!");
                 loadData();
@@ -213,6 +234,7 @@ public class DataGejalaForm extends JInternalFrame {
     }
 
     private void clearFields() {
+        cmbDiagnosisType.setSelectedIndex(0);
         txtId.setText("");
         cmbOrgan.setSelectedIndex(0);
         txtNama.setText("");

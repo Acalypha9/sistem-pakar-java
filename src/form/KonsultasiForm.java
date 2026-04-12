@@ -201,12 +201,26 @@ public class KonsultasiForm extends JInternalFrame {
 
     private void loadSymptoms() {
         model.setRowCount(0);
-        Database.getConnection();
         int number = 1;
-        for (ExpertSystemEngine.Question question : ExpertSystemEngine.getQuestions(diagnosisType)) {
-            model.addRow(new Object[]{String.valueOf(number), question.text(), false, question.id()});
-            number++;
+
+        try {
+            Connection conn = Database.getConnection();
+            String sql = "SELECT id_gejala, nama_gejala FROM gejala WHERE diagnosis_type = ? ORDER BY CAST(id_gejala AS INTEGER), id_gejala";
+            PreparedStatement pstmt = conn.prepareStatement(sql);
+            pstmt.setString(1, diagnosisType);
+            ResultSet rs = pstmt.executeQuery();
+
+            while (rs.next()) {
+                model.addRow(new Object[]{String.valueOf(number), rs.getString("nama_gejala"), false, rs.getString("id_gejala")});
+                number++;
+            }
+        } catch (SQLException e) {
+            for (ExpertSystemEngine.Question question : ExpertSystemEngine.getQuestions(diagnosisType)) {
+                model.addRow(new Object[]{String.valueOf(number), question.text(), false, question.id()});
+                number++;
+            }
         }
+
         SwingUtilities.invokeLater(() -> updateQuestionRowHeights());
     }
 

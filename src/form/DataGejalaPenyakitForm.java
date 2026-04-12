@@ -6,8 +6,6 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
 
 public class DataGejalaPenyakitForm extends JInternalFrame {
     private JComboBox<DiseaseItem> cmbPenyakit;
@@ -19,17 +17,21 @@ public class DataGejalaPenyakitForm extends JInternalFrame {
     private JButton btnAdd, btnRemove, btnSave;
 
     private static class DiseaseItem {
+        String type;
         String id;
         String nama;
+        String kategori;
 
-        public DiseaseItem(String id, String nama) {
+        public DiseaseItem(String type, String id, String nama, String kategori) {
+            this.type = type;
             this.id = id;
             this.nama = nama;
+            this.kategori = kategori;
         }
 
         @Override
         public String toString() {
-            return id;
+            return id + " (" + kategori + ")";
         }
     }
 
@@ -40,7 +42,7 @@ public class DataGejalaPenyakitForm extends JInternalFrame {
 
         initComponents();
         loadDiseases();
-        loadAvailableSymptoms();
+        loadSelectedSymptoms();
     }
 
     private void initComponents() {
@@ -199,21 +201,27 @@ public class DataGejalaPenyakitForm extends JInternalFrame {
         try {
             Connection conn = Database.getConnection();
             Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT id_penyakit, nama_penyakit FROM penyakit");
+            ResultSet rs = stmt.executeQuery("SELECT diagnosis_type, id_penyakit, nama_penyakit, kategori FROM penyakit ORDER BY kategori, id_penyakit");
             while (rs.next()) {
-                cmbPenyakit.addItem(new DiseaseItem(rs.getString("id_penyakit"), rs.getString("nama_penyakit")));
+                cmbPenyakit.addItem(new DiseaseItem(
+                        rs.getString("diagnosis_type"),
+                        rs.getString("id_penyakit"),
+                        rs.getString("nama_penyakit"),
+                        rs.getString("kategori")));
             }
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Error loading diseases: " + e.getMessage());
         }
     }
 
-    private void loadAvailableSymptoms() {
+    private void loadAvailableSymptoms(String diagnosisType) {
         modelTersedia.setRowCount(0);
         try {
             Connection conn = Database.getConnection();
-            Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery("SELECT id_gejala, nama_gejala FROM gejala");
+            PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT id_gejala, nama_gejala FROM gejala WHERE diagnosis_type = ? ORDER BY CAST(id_gejala AS INTEGER), id_gejala");
+            stmt.setString(1, diagnosisType);
+            ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
                 modelTersedia.addRow(new Object[]{rs.getString("id_gejala"), rs.getString("nama_gejala")});
             }
@@ -224,20 +232,25 @@ public class DataGejalaPenyakitForm extends JInternalFrame {
 
     private void loadSelectedSymptoms() {
         modelTerpilih.setRowCount(0);
-        loadAvailableSymptoms(); // Reset available list first
 
         DiseaseItem selected = (DiseaseItem) cmbPenyakit.getSelectedItem();
         if (selected == null) {
             txtNamaPenyakit.setText("");
+            modelTersedia.setRowCount(0);
             return;
         }
+
+        loadAvailableSymptoms(selected.type);
         txtNamaPenyakit.setText(selected.nama);
 
         try {
             Connection conn = Database.getConnection();
-            String sql = "SELECT g.id_gejala, g.nama_gejala FROM gejala g JOIN aturan a ON g.id_gejala = a.id_gejala WHERE a.id_penyakit = ?";
+            String sql = "SELECT g.id_gejala, g.nama_gejala FROM gejala g "
+                    + "JOIN aturan a ON g.diagnosis_type = a.diagnosis_type AND g.id_gejala = a.id_gejala "
+                    + "WHERE a.diagnosis_type = ? AND a.id_penyakit = ?";
             PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setString(1, selected.id);
+            pstmt.setString(1, selected.type);
+            pstmt.setString(2, selected.id);
             ResultSet rs = pstmt.executeQuery();
 
             while (rs.next()) {
@@ -267,17 +280,19 @@ public class DataGejalaPenyakitForm extends JInternalFrame {
             conn.setAutoCommit(false);
             try {
                 // Clear existing rules
-                String deleteSql = "DELETE FROM aturan WHERE id_penyakit = ?";
+                String deleteSql = "DELETE FROM aturan WHERE diagnosis_type = ? AND id_penyakit = ?";
                 PreparedStatement pstmtDelete = conn.prepareStatement(deleteSql);
-                pstmtDelete.setString(1, selected.id);
+                pstmtDelete.setString(1, selected.type);
+                pstmtDelete.setString(2, selected.id);
                 pstmtDelete.executeUpdate();
 
                 // Insert new rules
-                String insertSql = "INSERT INTO aturan (id_penyakit, id_gejala) VALUES (?, ?)";
+                String insertSql = "INSERT INTO aturan (diagnosis_type, id_penyakit, id_gejala) VALUES (?, ?, ?)";
                 PreparedStatement pstmtInsert = conn.prepareStatement(insertSql);
                 for (int i = 0; i < modelTerpilih.getRowCount(); i++) {
-                    pstmtInsert.setString(1, selected.id);
-                    pstmtInsert.setString(2, modelTerpilih.getValueAt(i, 0).toString());
+                    pstmtInsert.setString(1, selected.type);
+                    pstmtInsert.setString(2, selected.id);
+                    pstmtInsert.setString(3, modelTerpilih.getValueAt(i, 0).toString());
                     pstmtInsert.addBatch();
                 }
                 pstmtInsert.executeBatch();

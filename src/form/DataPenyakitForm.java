@@ -1,6 +1,8 @@
 package form;
 
 import config.Database;
+import model.ExpertSystemEngine;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
@@ -11,6 +13,7 @@ import java.util.Vector;
 public class DataPenyakitForm extends JInternalFrame {
     private JTextField txtId;
     private JTextField txtNama;
+    private JComboBox<String> cmbKategori;
     private JTextArea txtDeskripsi;
     private JTextArea txtPencegahan;
     private JTextArea txtObat;
@@ -75,8 +78,20 @@ public class DataPenyakitForm extends JInternalFrame {
         txtNama.setPreferredSize(new Dimension(0, 24));
         formPanel.add(txtNama, gbc);
 
-        // Deskripsi
+        // Kategori
         gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
+        JLabel lblKategori = new JLabel("Kategori :");
+        lblKategori.setFont(UIStyle.FONT_LABEL);
+        lblKategori.setHorizontalAlignment(SwingConstants.RIGHT);
+        formPanel.add(lblKategori, gbc);
+
+        gbc.gridx = 1; gbc.weightx = 1.0;
+        cmbKategori = new JComboBox<>(new String[]{"Infeksi", "Non-Infeksi", "Gastrousus"});
+        cmbKategori.setPreferredSize(new Dimension(0, 24));
+        formPanel.add(cmbKategori, gbc);
+
+        // Deskripsi
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0;
         JLabel lblDesk = new JLabel("Deskripsi :");
         lblDesk.setFont(UIStyle.FONT_LABEL);
         lblDesk.setHorizontalAlignment(SwingConstants.RIGHT);
@@ -89,7 +104,7 @@ public class DataPenyakitForm extends JInternalFrame {
         formPanel.add(new JScrollPane(txtDeskripsi), gbc);
 
         // Pencegahan
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
         JLabel lblPencegahan = new JLabel("Pencegahan :");
         lblPencegahan.setFont(UIStyle.FONT_LABEL);
         lblPencegahan.setHorizontalAlignment(SwingConstants.RIGHT);
@@ -102,7 +117,7 @@ public class DataPenyakitForm extends JInternalFrame {
         formPanel.add(new JScrollPane(txtPencegahan), gbc);
 
         // Obat
-        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 5; gbc.weightx = 0;
         JLabel lblObat = new JLabel("Obat :");
         lblObat.setFont(UIStyle.FONT_LABEL);
         lblObat.setHorizontalAlignment(SwingConstants.RIGHT);
@@ -126,7 +141,7 @@ public class DataPenyakitForm extends JInternalFrame {
         buttonPanel.add(btnSimpan);
         buttonPanel.add(btnHapus);
 
-        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 2;
+        gbc.gridx = 0; gbc.gridy = 6; gbc.gridwidth = 2;
         gbc.insets = new Insets(20, 0, 0, 0);
         formPanel.add(buttonPanel, gbc);
 
@@ -147,6 +162,7 @@ public class DataPenyakitForm extends JInternalFrame {
                 int row = table.getSelectedRow();
                 txtId.setText(table.getValueAt(row, 0).toString());
                 txtNama.setText(table.getValueAt(row, 1).toString());
+                cmbKategori.setSelectedItem(table.getValueAt(row, 2).toString());
                 txtDeskripsi.setText(table.getValueAt(row, 3).toString());
                 txtPencegahan.setText(table.getValueAt(row, 4).toString());
                 txtObat.setText(table.getValueAt(row, 5).toString());
@@ -183,6 +199,10 @@ public class DataPenyakitForm extends JInternalFrame {
     private void simpanData() {
         String id = txtId.getText();
         String nama = txtNama.getText();
+        String kategori = cmbKategori.getSelectedItem().toString();
+        String diagnosisType = "Gastrousus".equals(kategori)
+                ? ExpertSystemEngine.TYPE_GASTROUSUS
+                : ExpertSystemEngine.TYPE_INFEKSI;
         String deskripsi = txtDeskripsi.getText();
         String pencegahan = txtPencegahan.getText();
         String obat = txtObat.getText();
@@ -201,23 +221,27 @@ public class DataPenyakitForm extends JInternalFrame {
 
             if (rs.next()) {
                 // Update
-                String sql = "UPDATE penyakit SET nama_penyakit=?, deskripsi=?, pencegahan=?, obat=? WHERE id_penyakit=?";
+                String sql = "UPDATE penyakit SET diagnosis_type=?, nama_penyakit=?, kategori=?, deskripsi=?, pencegahan=?, obat=? WHERE id_penyakit=?";
                 PreparedStatement pstmt = conn.prepareStatement(sql);
-                pstmt.setString(1, nama);
-                pstmt.setString(2, deskripsi);
-                pstmt.setString(3, pencegahan);
-                pstmt.setString(4, obat);
-                pstmt.setString(5, id);
+                pstmt.setString(1, diagnosisType);
+                pstmt.setString(2, nama);
+                pstmt.setString(3, kategori);
+                pstmt.setString(4, deskripsi);
+                pstmt.setString(5, pencegahan);
+                pstmt.setString(6, obat);
+                pstmt.setString(7, id);
                 pstmt.executeUpdate();
             } else {
                 // Insert
-                String sql = "INSERT INTO penyakit (id_penyakit, nama_penyakit, deskripsi, pencegahan, obat) VALUES (?, ?, ?, ?, ?)";
+                String sql = "INSERT INTO penyakit (id_penyakit, diagnosis_type, nama_penyakit, kategori, deskripsi, pencegahan, obat) VALUES (?, ?, ?, ?, ?, ?, ?)";
                 PreparedStatement pstmt = conn.prepareStatement(sql);
                 pstmt.setString(1, id);
-                pstmt.setString(2, nama);
-                pstmt.setString(3, deskripsi);
-                pstmt.setString(4, pencegahan);
-                pstmt.setString(5, obat);
+                pstmt.setString(2, diagnosisType);
+                pstmt.setString(3, nama);
+                pstmt.setString(4, kategori);
+                pstmt.setString(5, deskripsi);
+                pstmt.setString(6, pencegahan);
+                pstmt.setString(7, obat);
                 pstmt.executeUpdate();
             }
             JOptionPane.showMessageDialog(this, "Data berhasil disimpan!");
@@ -255,6 +279,7 @@ public class DataPenyakitForm extends JInternalFrame {
     private void clearFields() {
         txtId.setText("");
         txtNama.setText("");
+        cmbKategori.setSelectedIndex(0);
         txtDeskripsi.setText("");
         txtPencegahan.setText("");
         txtObat.setText("");

@@ -215,12 +215,9 @@ public class HistoryForm extends JInternalFrame {
     }
 
     private String resolveSymptomText(Connection conn, String type, String id) throws SQLException {
-        if (ExpertSystemEngine.TYPE_GASTROUSUS.equals(type)) {
-            return ExpertSystemEngine.getQuestionText(type, id);
-        }
-
-        PreparedStatement pstG = conn.prepareStatement("SELECT nama_gejala FROM gejala WHERE id_gejala = ?");
-        pstG.setString(1, id);
+        PreparedStatement pstG = conn.prepareStatement("SELECT nama_gejala FROM gejala WHERE diagnosis_type = ? AND id_gejala = ?");
+        pstG.setString(1, type);
+        pstG.setString(2, id);
         ResultSet rsG = pstG.executeQuery();
         if (rsG.next()) {
             return rsG.getString("nama_gejala");

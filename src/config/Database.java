@@ -29,25 +29,7 @@ public class Database {
 
     private static void createTables() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute("CREATE TABLE IF NOT EXISTS penyakit (" +
-                    "id_penyakit TEXT PRIMARY KEY," +
-                    "nama_penyakit TEXT," +
-                    "kategori TEXT," +
-                    "deskripsi TEXT," +
-                    "pencegahan TEXT," +
-                    "obat TEXT)");
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS gejala (" +
-                    "id_gejala TEXT PRIMARY KEY," +
-                    "organ TEXT," +
-                    "nama_gejala TEXT)");
-
-            stmt.execute("CREATE TABLE IF NOT EXISTS aturan (" +
-                    "id_penyakit TEXT," +
-                    "id_gejala TEXT," +
-                    "PRIMARY KEY (id_penyakit, id_gejala)," +
-                    "FOREIGN KEY (id_penyakit) REFERENCES penyakit(id_penyakit)," +
-                    "FOREIGN KEY (id_gejala) REFERENCES gejala(id_gejala))");
+            stmt.execute("PRAGMA foreign_keys = ON");
 
             stmt.execute("CREATE TABLE IF NOT EXISTS history (" +
                     "id_history INTEGER PRIMARY KEY AUTOINCREMENT," +
@@ -56,15 +38,54 @@ public class Database {
                     "hasil_diagnosis TEXT," +
                     "persentase REAL," +
                     "gejala_dipilih TEXT)");
+
+            if (requiresKnowledgeBaseSchemaMigration()) {
+                stmt.execute("DROP TABLE IF EXISTS aturan");
+                stmt.execute("DROP TABLE IF EXISTS gejala");
+                stmt.execute("DROP TABLE IF EXISTS penyakit");
+            }
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS penyakit (" +
+                    "id_penyakit TEXT PRIMARY KEY," +
+                    "diagnosis_type TEXT NOT NULL," +
+                    "nama_penyakit TEXT," +
+                    "kategori TEXT," +
+                    "deskripsi TEXT," +
+                    "pencegahan TEXT," +
+                    "obat TEXT)");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS gejala (" +
+                    "diagnosis_type TEXT NOT NULL," +
+                    "id_gejala TEXT NOT NULL," +
+                    "organ TEXT," +
+                    "nama_gejala TEXT," +
+                    "PRIMARY KEY (diagnosis_type, id_gejala))");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS aturan (" +
+                    "diagnosis_type TEXT NOT NULL," +
+                    "id_penyakit TEXT," +
+                    "id_gejala TEXT," +
+                    "PRIMARY KEY (diagnosis_type, id_penyakit, id_gejala)," +
+                    "FOREIGN KEY (id_penyakit) REFERENCES penyakit(id_penyakit)," +
+                    "FOREIGN KEY (diagnosis_type, id_gejala) REFERENCES gejala(diagnosis_type, id_gejala))");
         }
     }
 
     private static void seedKnowledgeBaseIfNeeded() throws SQLException {
         boolean shouldSeed = false;
+        int expectedQuestionCount = getExpectedQuestionCount();
+        int expectedDiseaseCount = getExpectedDiseaseCount();
 
         try (Statement stmt = connection.createStatement()) {
             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM gejala");
-            if (rs.next() && rs.getInt(1) != ExpertSystemEngine.getQuestions().size()) {
+            if (rs.next() && rs.getInt(1) != expectedQuestionCount) {
+                shouldSeed = true;
+            }
+        }
+
+        try (Statement stmt = connection.createStatement()) {
+            ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM penyakit");
+            if (rs.next() && rs.getInt(1) != expectedDiseaseCount) {
                 shouldSeed = true;
             }
         }
@@ -72,6 +93,13 @@ public class Database {
         try (PreparedStatement pstmt = connection.prepareStatement("SELECT nama_penyakit FROM penyakit WHERE id_penyakit = '22'")) {
             ResultSet rs = pstmt.executeQuery();
             if (!rs.next() || !"Influenza".equals(rs.getString(1))) {
+                shouldSeed = true;
+            }
+        }
+
+        try (PreparedStatement pstmt = connection.prepareStatement("SELECT nama_penyakit FROM penyakit WHERE id_penyakit = '33'")) {
+            ResultSet rs = pstmt.executeQuery();
+            if (!rs.next() || !"Keracunan Staphylococcus aureus".equals(rs.getString(1))) {
                 shouldSeed = true;
             }
         }
@@ -87,37 +115,46 @@ public class Database {
             stmt.executeUpdate("DELETE FROM penyakit");
 
             try (PreparedStatement penyakitStmt = connection.prepareStatement(
-                    "INSERT INTO penyakit (id_penyakit, nama_penyakit, kategori, deskripsi, pencegahan, obat) VALUES (?, ?, ?, ?, ?, ?)");
+                    "INSERT INTO penyakit (id_penyakit, diagnosis_type, nama_penyakit, kategori, deskripsi, pencegahan, obat) VALUES (?, ?, ?, ?, ?, ?, ?)");
                  PreparedStatement gejalaStmt = connection.prepareStatement(
-                         "INSERT INTO gejala (id_gejala, organ, nama_gejala) VALUES (?, ?, ?)");
+                         "INSERT INTO gejala (diagnosis_type, id_gejala, organ, nama_gejala) VALUES (?, ?, ?, ?)");
                  PreparedStatement aturanStmt = connection.prepareStatement(
-                         "INSERT INTO aturan (id_penyakit, id_gejala) VALUES (?, ?)") ) {
+                         "INSERT INTO aturan (diagnosis_type, id_penyakit, id_gejala) VALUES (?, ?, ?)") ) {
 
-                for (ExpertSystemEngine.Disease disease : ExpertSystemEngine.getDiseases()) {
-                    penyakitStmt.setString(1, disease.id());
-                    penyakitStmt.setString(2, disease.name());
-                    penyakitStmt.setString(3, disease.category());
-                    penyakitStmt.setString(4, disease.description());
-                    penyakitStmt.setString(5, disease.prevention());
-                    penyakitStmt.setString(6, "Observasi klinis dan penanganan medis sesuai hasil diagnosis.");
-                    penyakitStmt.addBatch();
+                for (String type : ExpertSystemEngine.getSupportedTypes()) {
+                    for (ExpertSystemEngine.Disease disease : ExpertSystemEngine.getDiseases(type)) {
+                        penyakitStmt.setString(1, disease.id());
+                        penyakitStmt.setString(2, type);
+                        penyakitStmt.setString(3, disease.name());
+                        penyakitStmt.setString(4, disease.category());
+                        penyakitStmt.setString(5, disease.description());
+                        penyakitStmt.setString(6, disease.prevention());
+                        penyakitStmt.setString(7, "Observasi klinis dan penanganan medis sesuai hasil diagnosis.");
+                        penyakitStmt.addBatch();
+                    }
                 }
                 penyakitStmt.executeBatch();
 
-                for (ExpertSystemEngine.Question question : ExpertSystemEngine.getQuestions()) {
-                    gejalaStmt.setString(1, question.id());
-                    gejalaStmt.setString(2, categoryForQuestion(question.id()));
-                    gejalaStmt.setString(3, question.text());
-                    gejalaStmt.addBatch();
+                for (String type : ExpertSystemEngine.getSupportedTypes()) {
+                    for (ExpertSystemEngine.Question question : ExpertSystemEngine.getQuestions(type)) {
+                        gejalaStmt.setString(1, type);
+                        gejalaStmt.setString(2, question.id());
+                        gejalaStmt.setString(3, categoryForQuestion(type, question.id()));
+                        gejalaStmt.setString(4, question.text());
+                        gejalaStmt.addBatch();
+                    }
                 }
                 gejalaStmt.executeBatch();
 
-                for (ExpertSystemEngine.Disease disease : ExpertSystemEngine.getDiseases()) {
-                    Set<String> leafQuestions = ExpertSystemEngine.expandQuestionDependenciesForDisease(disease.id());
-                    for (String questionId : leafQuestions) {
-                        aturanStmt.setString(1, disease.id());
-                        aturanStmt.setString(2, questionId);
-                        aturanStmt.addBatch();
+                for (String type : ExpertSystemEngine.getSupportedTypes()) {
+                    for (ExpertSystemEngine.Disease disease : ExpertSystemEngine.getDiseases(type)) {
+                        Set<String> leafQuestions = ExpertSystemEngine.expandQuestionDependenciesForDisease(type, disease.id());
+                        for (String questionId : leafQuestions) {
+                            aturanStmt.setString(1, type);
+                            aturanStmt.setString(2, disease.id());
+                            aturanStmt.setString(3, questionId);
+                            aturanStmt.addBatch();
+                        }
                     }
                 }
                 aturanStmt.executeBatch();
@@ -132,7 +169,46 @@ public class Database {
         }
     }
 
-    private static String categoryForQuestion(String questionId) {
+    private static boolean requiresKnowledgeBaseSchemaMigration() throws SQLException {
+        return !tableHasColumn("penyakit", "diagnosis_type")
+                || !tableHasColumn("gejala", "diagnosis_type")
+                || !tableHasColumn("aturan", "diagnosis_type");
+    }
+
+    private static boolean tableHasColumn(String tableName, String columnName) throws SQLException {
+        String sql = "PRAGMA table_info(" + tableName + ")";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                if (columnName.equalsIgnoreCase(rs.getString("name"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static int getExpectedQuestionCount() {
+        int total = 0;
+        for (String type : ExpertSystemEngine.getSupportedTypes()) {
+            total += ExpertSystemEngine.getQuestions(type).size();
+        }
+        return total;
+    }
+
+    private static int getExpectedDiseaseCount() {
+        int total = 0;
+        for (String type : ExpertSystemEngine.getSupportedTypes()) {
+            total += ExpertSystemEngine.getDiseases(type).size();
+        }
+        return total;
+    }
+
+    private static String categoryForQuestion(String type, String questionId) {
+        if (ExpertSystemEngine.TYPE_GASTROUSUS.equals(type)) {
+            return classifyGastroususQuestion(questionId);
+        }
+
         int id = Integer.parseInt(questionId);
         if (id >= 1 && id <= 4) {
             return "Pernafasan";
@@ -144,5 +220,13 @@ public class Database {
             return "Metabolik";
         }
         return "Kardiovaskular";
+    }
+
+    private static String classifyGastroususQuestion(String questionId) {
+        int id = Integer.parseInt(questionId);
+        if (id >= 1 && id <= 13) {
+            return "Gastrousus";
+        }
+        return "Riwayat Konsumsi";
     }
 }
