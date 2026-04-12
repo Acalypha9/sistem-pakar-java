@@ -1,6 +1,7 @@
 package form;
 
 import config.Database;
+import model.ExpertSystemEngine;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -141,19 +142,43 @@ public class HasilDiagnosisForm extends JDialog {
             if (rs.next()) {
                 String diseaseName = rs.getString("nama_penyakit");
                 String kategori = rs.getString("kategori");
-                String jenisLabel = "Infeksi".equals(kategori) ? "Infeksi (Menular)" : "Non-Infeksi (Tidak Menular)";
+                String jenisLabel = formatCategoryLabel(kategori);
                 lblHeaderTitle.setText("Hasil Diagnosis : anda terkena penyakit " + diseaseName + " (" + idPenyakit + ")");
                 lblDisease.setText("Penyakit: " + diseaseName);
                 lblCategory.setText("Kategori: " + jenisLabel);
                 txtDescription.setText(rs.getString("deskripsi"));
                 txtPrevention.setText(rs.getString("pencegahan"));
             } else {
-                lblDisease.setText("Penyakit Tidak Ditemukan");
-                txtDescription.setText("Informasi tidak tersedia untuk ID: " + idPenyakit);
-                txtPrevention.setText("Informasi tidak tersedia.");
+                loadDiseaseFromEngine(idPenyakit);
             }
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Error loading disease details: " + e.getMessage());
         }
+    }
+
+    private void loadDiseaseFromEngine(String idPenyakit) {
+        ExpertSystemEngine.Disease disease = ExpertSystemEngine.getDisease(idPenyakit);
+        if (disease == null) {
+            lblDisease.setText("Penyakit Tidak Ditemukan");
+            txtDescription.setText("Informasi tidak tersedia untuk ID: " + idPenyakit);
+            txtPrevention.setText("Informasi tidak tersedia.");
+            return;
+        }
+
+        lblHeaderTitle.setText("Hasil Diagnosis : anda terkena penyakit " + disease.name() + " (" + idPenyakit + ")");
+        lblDisease.setText("Penyakit: " + disease.name());
+        lblCategory.setText("Kategori: " + formatCategoryLabel(disease.category()));
+        txtDescription.setText(disease.description());
+        txtPrevention.setText(disease.prevention());
+    }
+
+    private String formatCategoryLabel(String kategori) {
+        if ("Infeksi".equals(kategori)) {
+            return "Infeksi (Menular)";
+        }
+        if ("Non-Infeksi".equals(kategori)) {
+            return "Non-Infeksi (Tidak Menular)";
+        }
+        return kategori == null || kategori.isBlank() ? "-" : kategori;
     }
 }

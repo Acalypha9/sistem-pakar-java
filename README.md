@@ -1,6 +1,10 @@
-# Sistem Pakar Diagnosa Penyakit Infeksi dan Non-Infeksi
+# Sistem Pakar Diagnosa Penyakit Infeksi, Non-Infeksi, dan Gastrousus
 
-Sistem Pakar Diagnosa Penyakit Infeksi dan Non-Infeksi adalah sebuah aplikasi desktop berbasis Java (Swing) yang dirancang untuk membantu mendiagnosis penyakit berdasarkan gejala-gejala yang dialami pengguna. Sistem ini menggunakan dua metode inferensi:
+Sistem Pakar Diagnosa Penyakit Infeksi, Non-Infeksi, dan Gastrousus adalah aplikasi desktop berbasis Java (Swing) yang dirancang untuk membantu mendiagnosis penyakit berdasarkan gejala-gejala yang dialami pengguna. Sistem ini sekarang mendukung dua kelompok konsultasi utama:
+- **Infeksi dan Non-Infeksi** untuk penyakit umum seperti Influenza, Demam Berdarah, Diabetes, dan Hipertensi.
+- **Gastrousus** untuk diagnosis gangguan/keracunan saluran cerna berdasarkan rule bertingkat.
+
+Sistem ini menggunakan dua metode inferensi:
 1. **Rule-Based**: Diagnosa dilakukan jika *semua* gejala untuk sebuah penyakit terpenuhi.
 2. **Bobot / Persentase**: Diagnosa dilakukan berdasarkan persentase kecocokan gejala (dengan threshold minimal 50%).
 
@@ -14,7 +18,8 @@ Aplikasi ini ditujukan untuk tugas mata kuliah **Kecerdasan Buatan (Artificial I
 - **Aturan (Rule)**:
   - **Data Gejala Penyakit**: Menentukan relasi aturan / *rule* antara gejala dengan penyakit yang sesuai.
 - **Konsultasi**:
-  - **Mulai Konsultasi**: Melakukan proses diagnosa dengan menjawab pertanyaan-pertanyaan (gejala) yang disediakan.
+  - **Mulai Konsultasi**: Menampilkan pilihan jenis konsultasi (**Infeksi dan Non Infeksi** atau **Gastrousus**) sebelum proses diagnosa dimulai.
+  - **Mode Gastrousus**: Mendukung rule bertingkat dengan fakta turunan untuk diagnosis seperti Keracunan Staphylococcus aureus, keracunan jamur beracun, Salmonellae, Clostridium botulinum, dan Campylobacter.
   - **Riwayat Konsultasi**: Melihat hasil konsultasi atau diagnosa yang telah dilakukan sebelumnya.
 
 ## Teknologi yang Digunakan

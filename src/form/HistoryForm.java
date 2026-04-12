@@ -1,6 +1,8 @@
 package form;
 
 import config.Database;
+import model.ExpertSystemEngine;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableModel;
@@ -10,6 +12,8 @@ import java.sql.*;
 public class HistoryForm extends JInternalFrame {
     private JTable tblHistory;
     private DefaultTableModel model;
+
+    private record SelectedSymptoms(String type, String idsCsv) {}
 
     public HistoryForm() {
         super("Riwayat Konsultasi", true, true, true, true);
@@ -116,25 +120,24 @@ public class HistoryForm extends JInternalFrame {
             ResultSet rs = pstmt.executeQuery();
 
             if (rs.next()) {
-                String gejalaIds = rs.getString("gejala_dipilih");
+                SelectedSymptoms selectedSymptoms = parseSelectedSymptoms(rs.getString("gejala_dipilih"));
                 String diseaseName = rs.getString("hasil_diagnosis");
                 double percentage = rs.getDouble("persentase");
                 
                 StringBuilder detail = new StringBuilder();
                 detail.append("Nama: ").append(rs.getString("nama_history")).append("\n");
                 detail.append("Tanggal: ").append(rs.getString("tanggal")).append("\n");
+                detail.append("Jenis Konsultasi: ").append(ExpertSystemEngine.getDisplayName(selectedSymptoms.type())).append("\n");
                 detail.append("Hasil: ").append(diseaseName).append("\n");
                 detail.append("Persentase: ").append(String.format("%.2f%%", percentage)).append("\n\n");
                 detail.append("Gejala yang dipilih:\n");
 
-                if (gejalaIds != null && !gejalaIds.isEmpty()) {
-                    String[] ids = gejalaIds.split(",");
+                if (selectedSymptoms.idsCsv() != null && !selectedSymptoms.idsCsv().isEmpty()) {
+                    String[] ids = selectedSymptoms.idsCsv().split(",");
                     for (String id : ids) {
-                        PreparedStatement pstG = conn.prepareStatement("SELECT nama_gejala FROM gejala WHERE id_gejala = ?");
-                        pstG.setString(1, id);
-                        ResultSet rsG = pstG.executeQuery();
-                        if (rsG.next()) {
-                            detail.append("- ").append(rsG.getString("nama_gejala")).append("\n");
+                        String symptomText = resolveSymptomText(conn, selectedSymptoms.type(), id.trim());
+                        if (symptomText != null && !symptomText.isBlank()) {
+                            detail.append("- ").append(symptomText).append("\n");
                         }
                     }
                 }
@@ -197,5 +200,32 @@ public class HistoryForm extends JInternalFrame {
                 JOptionPane.showMessageDialog(this, "Error deleting history: " + e.getMessage());
             }
         }
+    }
+
+    private SelectedSymptoms parseSelectedSymptoms(String rawValue) {
+        if (rawValue != null) {
+            int separatorIndex = rawValue.indexOf('|');
+            if (separatorIndex > -1) {
+                String type = rawValue.substring(0, separatorIndex);
+                String idsCsv = rawValue.substring(separatorIndex + 1);
+                return new SelectedSymptoms(ExpertSystemEngine.normalizeType(type), idsCsv);
+            }
+        }
+        return new SelectedSymptoms(ExpertSystemEngine.TYPE_INFEKSI, rawValue == null ? "" : rawValue);
+    }
+
+    private String resolveSymptomText(Connection conn, String type, String id) throws SQLException {
+        if (ExpertSystemEngine.TYPE_GASTROUSUS.equals(type)) {
+            return ExpertSystemEngine.getQuestionText(type, id);
+        }
+
+        PreparedStatement pstG = conn.prepareStatement("SELECT nama_gejala FROM gejala WHERE id_gejala = ?");
+        pstG.setString(1, id);
+        ResultSet rsG = pstG.executeQuery();
+        if (rsG.next()) {
+            return rsG.getString("nama_gejala");
+        }
+
+        return ExpertSystemEngine.getQuestionText(type, id);
     }
 }

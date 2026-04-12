@@ -8,6 +8,8 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.TableModelEvent;
 import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumn;
 import java.awt.*;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -19,6 +21,7 @@ import java.util.List;
 import java.util.Set;
 
 public class KonsultasiForm extends JInternalFrame {
+    private final String diagnosisType;
     private JTable tblGejala;
     private DefaultTableModel model;
     private JButton btnDiagnosis;
@@ -31,7 +34,13 @@ public class KonsultasiForm extends JInternalFrame {
     private JLabel lblResult;
 
     public KonsultasiForm() {
+        this(ExpertSystemEngine.TYPE_INFEKSI);
+    }
+
+    public KonsultasiForm(String type) {
         super("Konsultasi Gejala", true, true, true, true);
+        diagnosisType = ExpertSystemEngine.normalizeType(type);
+        setTitle("Konsultasi Gejala - " + ExpertSystemEngine.getDisplayName(diagnosisType));
         setSize(900, 560);
         setLayout(new BorderLayout(10, 10));
 
@@ -52,7 +61,9 @@ public class KonsultasiForm extends JInternalFrame {
         centerWrapper.setOpaque(false);
         centerWrapper.setBorder(new EmptyBorder(15, 15, 15, 15));
 
-        JLabel infoLabel = new JLabel("<html><div style='text-align:center;'>Silahkan jawab pertanyaan berikut ini untuk melakukan konsultasi guna mengetahui penyakit yang dialami<br>(beri tanda centang untuk jawaban YA)</div></html>");
+        JLabel infoLabel = new JLabel("<html><div style='text-align:center;'>Silahkan jawab pertanyaan berikut ini untuk melakukan konsultasi "
+                + ExpertSystemEngine.getDisplayName(diagnosisType)
+                + "<br>(beri tanda centang untuk jawaban YA)</div></html>");
         infoLabel.setHorizontalAlignment(SwingConstants.CENTER);
         infoLabel.setFont(new Font("Tahoma", Font.BOLD, 12));
         infoLabel.setForeground(new Color(60, 60, 60));
@@ -74,8 +85,10 @@ public class KonsultasiForm extends JInternalFrame {
 
         tblGejala = new JTable(model);
         UIStyle.styleTable(tblGejala);
+        configureQuestionColumnWrap();
         tblGejala.getTableHeader().setReorderingAllowed(false);
         tblGejala.getColumnModel().getColumn(0).setMaxWidth(40);
+        tblGejala.getColumnModel().getColumn(1).setPreferredWidth(360);
         tblGejala.getColumnModel().getColumn(2).setPreferredWidth(110);
         tblGejala.getColumnModel().getColumn(3).setMinWidth(0);
         tblGejala.getColumnModel().getColumn(3).setMaxWidth(0);
@@ -84,6 +97,10 @@ public class KonsultasiForm extends JInternalFrame {
         leftScroll.setBorder(BorderFactory.createLineBorder(new Color(226, 232, 240)));
         tblGejala.setBackground(new Color(255, 255, 200));
         leftScroll.getViewport().setBackground(new Color(255, 255, 200));
+
+        JPanel leftArea = new JPanel(new BorderLayout());
+        leftArea.setOpaque(false);
+        leftArea.add(leftScroll, BorderLayout.CENTER);
 
         txtPersentase = new JTextArea();
         txtPersentase.setEditable(false);
@@ -107,7 +124,7 @@ public class KonsultasiForm extends JInternalFrame {
         rightPanelCards.add(ruleScroll, "RULE");
         rightPanelCards.add(percentageScroll, "PERCENTAGE");
 
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftScroll, rightPanelCards);
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftArea, rightPanelCards);
         splitPane.setResizeWeight(0.65);
         splitPane.setDividerLocation(560);
         splitPane.setBorder(null);
@@ -116,10 +133,11 @@ public class KonsultasiForm extends JInternalFrame {
 
         JPanel bottomPanel = new JPanel(new BorderLayout(10, 10));
         bottomPanel.setOpaque(false);
-        bottomPanel.setBorder(new EmptyBorder(5, 10, 5, 5));
+        bottomPanel.setBorder(new EmptyBorder(2, 10, 10, 5));
 
         JPanel resultPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         resultPanel.setOpaque(false);
+        resultPanel.setBorder(new EmptyBorder(18, 0, 0, 0));
         JLabel lblResultPrefix = new JLabel("Anda terdiagnosis : ");
         lblResultPrefix.setFont(new Font("Tahoma", Font.BOLD, 12));
         lblResultPrefix.setForeground(new Color(60, 60, 60));
@@ -128,14 +146,10 @@ public class KonsultasiForm extends JInternalFrame {
         lblResult.setFont(new Font("Tahoma", Font.BOLD, 12));
         lblResult.setForeground(Color.RED);
         resultPanel.add(lblResult);
-        
-        JPanel leftWrapper = new JPanel(new GridBagLayout());
-        leftWrapper.setOpaque(false);
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.weightx = 1.0;
-        leftWrapper.add(resultPanel, gbc);
 
+        JPanel leftWrapper = new JPanel(new BorderLayout());
+        leftWrapper.setOpaque(false);
+        leftWrapper.add(resultPanel, BorderLayout.NORTH);
         bottomPanel.add(leftWrapper, BorderLayout.WEST);
 
         JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
@@ -171,6 +185,7 @@ public class KonsultasiForm extends JInternalFrame {
         model.addTableModelListener(new TableModelListener() {
             @Override
             public void tableChanged(TableModelEvent e) {
+                SwingUtilities.invokeLater(() -> updateQuestionRowHeights());
                 if (e.getColumn() == 2 || e.getColumn() == TableModelEvent.ALL_COLUMNS) {
                     updateDiagnosisPreview();
                 }
@@ -188,15 +203,16 @@ public class KonsultasiForm extends JInternalFrame {
         model.setRowCount(0);
         Database.getConnection();
         int number = 1;
-        for (ExpertSystemEngine.Question question : ExpertSystemEngine.getQuestions()) {
+        for (ExpertSystemEngine.Question question : ExpertSystemEngine.getQuestions(diagnosisType)) {
             model.addRow(new Object[]{String.valueOf(number), question.text(), false, question.id()});
             number++;
         }
+        SwingUtilities.invokeLater(() -> updateQuestionRowHeights());
     }
 
     private void runDiagnosis() {
         Set<String> selectedQuestionIds = getSelectedQuestionIds();
-        String gejalaStr = getSelectedQuestionIdsAsString();
+        String gejalaStr = diagnosisType + "|" + getSelectedQuestionIdsAsString();
 
         if (selectedQuestionIds.isEmpty()) {
             JOptionPane.showMessageDialog(this, "Silakan pilih minimal satu pertanyaan dengan jawaban YA.");
@@ -206,8 +222,8 @@ public class KonsultasiForm extends JInternalFrame {
         boolean isRuleBased = cbMetode.getSelectedIndex() == 0;
         double threshold = Double.parseDouble(String.valueOf(cbThreshold.getSelectedItem()));
         List<ExpertSystemEngine.DiagnosisResult> results = isRuleBased
-                ? ExpertSystemEngine.diagnoseRuleBased(selectedQuestionIds)
-                : ExpertSystemEngine.diagnosePercentageBased(selectedQuestionIds, threshold);
+                ? ExpertSystemEngine.diagnoseRuleBased(diagnosisType, selectedQuestionIds)
+                : ExpertSystemEngine.diagnosePercentageBased(diagnosisType, selectedQuestionIds, threshold);
 
         String mainDiseaseName = results.isEmpty() ? "Sehat" : results.get(0).diseaseName();
         double mainPercentage = results.isEmpty() ? 0.0 : results.get(0).percentage();
@@ -293,41 +309,93 @@ public class KonsultasiForm extends JInternalFrame {
             return;
         }
 
-        List<ExpertSystemEngine.DiseaseScore> scores = ExpertSystemEngine.calculateDiseaseScores(selectedIds);
+        Set<String> inferredFacts = ExpertSystemEngine.inferFacts(diagnosisType, selectedIds);
+        List<ExpertSystemEngine.DiseaseScore> scores = ExpertSystemEngine.calculateDiseaseScores(diagnosisType, selectedIds);
 
         if (isRuleBased) {
-            List<ExpertSystemEngine.DiagnosisResult> results = ExpertSystemEngine.diagnoseRuleBased(selectedIds);
-            txtRule.setText(buildRulePreviewHtml(selectedIds, scores, results));
+            List<ExpertSystemEngine.DiagnosisResult> results = ExpertSystemEngine.diagnoseRuleBased(diagnosisType, selectedIds);
+            txtRule.setText(buildRulePreviewHtml(inferredFacts, scores, results));
             txtRule.setCaretPosition(0);
 
-            if (!results.isEmpty()) {
-                StringBuilder sb = new StringBuilder("<html>");
-                for (int i = 0; i < results.size(); i++) {
-                    if (i > 0) sb.append(", ");
-                    sb.append(results.get(i).diseaseName()).append(" [").append(results.get(i).category()).append("]");
-                }
-                sb.append("</html>");
-                lblResult.setText(sb.toString());
-            } else {
-                lblResult.setText("\u2014");
-            }
+            lblResult.setText(formatDiagnosisResults(results));
             return;
         }
 
-        List<ExpertSystemEngine.DiagnosisResult> results = ExpertSystemEngine.diagnosePercentageBased(selectedIds, threshold);
+        List<ExpertSystemEngine.DiagnosisResult> results = ExpertSystemEngine.diagnosePercentageBased(diagnosisType, selectedIds, threshold);
         txtPersentase.setText(formatScores(scores));
         txtPersentase.setCaretPosition(0);
-        if (!results.isEmpty()) {
-            StringBuilder sb = new StringBuilder("<html>");
-            for (int i = 0; i < results.size(); i++) {
-                if (i > 0) sb.append(", ");
-                sb.append(results.get(i).diseaseName()).append(" [").append(results.get(i).category()).append("]");
-            }
-            sb.append("</html>");
-            lblResult.setText(sb.toString());
-        } else {
-            lblResult.setText("\u2014");
+        lblResult.setText(formatDiagnosisResults(results));
+    }
+
+    private String formatDiagnosisResults(List<ExpertSystemEngine.DiagnosisResult> results) {
+        if (results.isEmpty()) {
+            return "\u2014";
         }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < results.size(); i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            sb.append(results.get(i).diseaseName());
+            if (!ExpertSystemEngine.TYPE_GASTROUSUS.equals(diagnosisType)) {
+                sb.append(" [")
+                        .append(results.get(i).category())
+                        .append("]");
+            }
+        }
+        return "<html>" + esc(sb.toString()) + "</html>";
+    }
+
+    private void configureQuestionColumnWrap() {
+        tblGejala.getColumnModel().getColumn(1).setCellRenderer(new TableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+                JTextArea textArea = new JTextArea(value == null ? "" : value.toString());
+                textArea.setLineWrap(true);
+                textArea.setWrapStyleWord(true);
+                textArea.setFont(table.getFont());
+                textArea.setBorder(new EmptyBorder(6, 8, 6, 8));
+                textArea.setOpaque(true);
+
+                if (isSelected) {
+                    textArea.setBackground(table.getSelectionBackground());
+                    textArea.setForeground(table.getSelectionForeground());
+                } else {
+                    textArea.setBackground(table.getBackground());
+                    textArea.setForeground(table.getForeground());
+                }
+
+                return textArea;
+            }
+        });
+    }
+
+    private void updateQuestionRowHeights() {
+        int questionColumn = 1;
+        int width = tblGejala.getColumnModel().getColumn(questionColumn).getWidth();
+        if (width <= 0) {
+            width = 360;
+        }
+
+        for (int row = 0; row < tblGejala.getRowCount(); row++) {
+            TableCellRenderer renderer = tblGejala.getCellRenderer(row, questionColumn);
+            Component component = tblGejala.prepareRenderer(renderer, row, questionColumn);
+
+            if (component instanceof JTextArea textArea) {
+                textArea.setSize(width, Short.MAX_VALUE);
+                int preferredHeight = Math.max(30, textArea.getPreferredSize().height + 4);
+                if (tblGejala.getRowHeight(row) != preferredHeight) {
+                    tblGejala.setRowHeight(row, preferredHeight);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void doLayout() {
+        super.doLayout();
+        SwingUtilities.invokeLater(this::updateQuestionRowHeights);
     }
 
     private String formatScores(List<ExpertSystemEngine.DiseaseScore> scores) {
@@ -351,7 +419,7 @@ public class KonsultasiForm extends JInternalFrame {
                 + "</body></html>";
     }
 
-    private String buildRulePreviewHtml(Set<String> selectedIds, List<ExpertSystemEngine.DiseaseScore> scores, List<ExpertSystemEngine.DiagnosisResult> results) {
+    private String buildRulePreviewHtml(Set<String> inferredFacts, List<ExpertSystemEngine.DiseaseScore> scores, List<ExpertSystemEngine.DiagnosisResult> results) {
         StringBuilder html = new StringBuilder();
         html.append("<html><body style='font-family:Tahoma,sans-serif;background:#fff;padding:12px;'>");
         html.append("<div style='font-size:16px;font-weight:bold;color:#a14f00;margin-bottom:6px;'>Penyelesaian dengan aturan (rules)</div>");
@@ -362,7 +430,7 @@ public class KonsultasiForm extends JInternalFrame {
         for (ExpertSystemEngine.DiseaseScore score : scores) {
             if (score.matched() == 0) continue;
             anyRelevant = true;
-            appendRuleBlock(html, score, selectedIds);
+            appendRuleBlock(html, score, inferredFacts);
         }
 
         if (!anyRelevant) {
@@ -389,8 +457,8 @@ public class KonsultasiForm extends JInternalFrame {
         return html.toString();
     }
 
-    private void appendRuleBlock(StringBuilder html, ExpertSystemEngine.DiseaseScore score, Set<String> selectedIds) {
-        List<String> deps = ExpertSystemEngine.getDependencies(score.diseaseId());
+    private void appendRuleBlock(StringBuilder html, ExpertSystemEngine.DiseaseScore score, Set<String> inferredFacts) {
+        List<String> deps = ExpertSystemEngine.getDependencies(diagnosisType, score.diseaseId());
         boolean allMatch = score.matched() == score.total();
 
         html.append("<div style='border:1px solid ").append(allMatch ? "#4a4" : "#ccc")
@@ -405,7 +473,7 @@ public class KonsultasiForm extends JInternalFrame {
         for (int i = 0; i < deps.size(); i++) {
             if (i > 0) html.append(" <b>AND</b> ");
             String dep = deps.get(i);
-            boolean matched = selectedIds.contains(dep);
+            boolean matched = inferredFacts.contains(dep);
             html.append("<span style='color:").append(matched ? "#008000" : "#999").append(";'>")
                     .append(matched ? "\u2713 " : "\u2717 ")
                     .append(esc(getRulePhrase(dep)))
@@ -426,26 +494,7 @@ public class KonsultasiForm extends JInternalFrame {
     }
 
     private String getRulePhrase(String nodeId) {
-        return switch (nodeId) {
-            case "1" -> "demam";
-            case "2" -> "batuk";
-            case "3" -> "pilek";
-            case "4" -> "sakit tenggorokan";
-            case "5" -> "demam tinggi";
-            case "6" -> "nyeri sendi";
-            case "7" -> "ruam kulit";
-            case "8" -> "mual";
-            case "9" -> "sering haus";
-            case "10" -> "sering buang air kecil";
-            case "11" -> "mudah lelah";
-            case "12" -> "luka sulit sembuh";
-            case "13" -> "sakit kepala";
-            case "14" -> "pusing";
-            case "15" -> "penglihatan kabur";
-            case "16" -> "tekanan darah tinggi";
-            case "17" -> "mimisan";
-            default -> nodeId;
-        };
+        return ExpertSystemEngine.getNodeLabel(diagnosisType, nodeId);
     }
 
     private String esc(String text) {

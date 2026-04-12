@@ -1,5 +1,7 @@
 package form;
 
+import model.ExpertSystemEngine;
+
 import javax.swing.*;
 import java.awt.*;
 
@@ -11,7 +13,7 @@ public class MainForm extends JFrame {
     }
 
     private void initComponents() {
-        setTitle("Sistem Pakar identifikasi infeksi dan non-fiksi dengan metode Rule-Based dan Bobot");
+        setTitle("Sistem Pakar Diagnosa Infeksi, Non-Infeksi, dan Gastrousus dengan Metode Rule-Based dan Bobot");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(1200, 800);
         setLocationRelativeTo(null);
@@ -86,7 +88,26 @@ public class MainForm extends JFrame {
         JMenuItem itemMulaiKonsultasi = new JMenuItem("Mulai Konsultasi");
         styleMenuItem(itemMulaiKonsultasi);
         itemMulaiKonsultasi.addActionListener(e -> {
-            KonsultasiForm form = new KonsultasiForm();
+            String[] options = {"Infeksi dan Non Infeksi", "Gastrousus"};
+            String selected = (String) JOptionPane.showInputDialog(
+                    this,
+                    "Pilih jenis konsultasi yang ingin dijalankan:",
+                    "Pilih Diagnosis",
+                    JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    options,
+                    options[0]
+            );
+
+            if (selected == null) {
+                return;
+            }
+
+            String type = "Gastrousus".equals(selected)
+                    ? ExpertSystemEngine.TYPE_GASTROUSUS
+                    : ExpertSystemEngine.TYPE_INFEKSI;
+
+            KonsultasiForm form = new KonsultasiForm(type);
             desktopPane.add(form);
             form.setVisible(true);
         });
