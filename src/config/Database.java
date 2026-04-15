@@ -90,7 +90,7 @@ public class Database {
             }
         }
 
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT nama_penyakit FROM penyakit WHERE id_penyakit = '22'")) {
+        try (PreparedStatement pstmt = connection.prepareStatement("SELECT nama_penyakit FROM penyakit WHERE id_penyakit = '56'")) {
             ResultSet rs = pstmt.executeQuery();
             if (!rs.next() || !"Influenza".equals(rs.getString(1))) {
                 shouldSeed = true;
@@ -210,13 +210,13 @@ public class Database {
         }
 
         int id = Integer.parseInt(questionId);
-        if (id >= 1 && id <= 4) {
+        if (id >= 1 && id <= 12) {
             return "Pernafasan";
         }
-        if (id >= 5 && id <= 8) {
+        if (id >= 13 && id <= 21) {
             return "Infeksi Virus";
         }
-        if (id >= 9 && id <= 12) {
+        if (id >= 22 && id <= 28) {
             return "Metabolik";
         }
         return "Kardiovaskular";

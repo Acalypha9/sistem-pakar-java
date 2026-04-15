@@ -22,6 +22,10 @@ public final class ExpertSystemEngine {
 
     public record DiseaseScore(String diseaseId, String diseaseName, String category, double percentage, int matched, int total) {}
 
+    public record IntermediateWeight(String nodeId, String label, double weight, int matched, int total, List<String> dependencies) {}
+
+    public record WeightedDiseaseScore(String diseaseId, String diseaseName, String category, double percentage, List<IntermediateWeight> intermediateWeights) {}
+
     private record KnowledgeBase(
             String type,
             String displayName,
@@ -255,6 +259,74 @@ public final class ExpertSystemEngine {
         return results;
     }
 
+    public static Map<String, IntermediateWeight> calculateIntermediateWeights(String type, Set<String> selectedQuestionIds) {
+        KnowledgeBase kb = getKnowledgeBase(type);
+        LinkedHashMap<String, IntermediateWeight> weights = new LinkedHashMap<>();
+
+        for (Map.Entry<String, List<String>> entry : kb.rules().entrySet()) {
+            String nodeId = entry.getKey();
+            if (kb.diseases().containsKey(nodeId)) continue;
+            if (kb.questions().containsKey(nodeId)) continue;
+
+            List<String> deps = entry.getValue();
+            int matched = 0;
+            for (String dep : deps) {
+                if (selectedQuestionIds.contains(dep)) {
+                    matched++;
+                }
+            }
+
+            double weight = deps.isEmpty() ? 0.0 : (double) matched / deps.size() * 100.0;
+            String label = getNodeLabel(type, nodeId);
+            weights.put(nodeId, new IntermediateWeight(nodeId, label, weight, matched, deps.size(), deps));
+        }
+
+        return weights;
+    }
+
+    public static List<WeightedDiseaseScore> calculateWeightedDiseaseScores(String type, Set<String> selectedQuestionIds) {
+        KnowledgeBase kb = getKnowledgeBase(type);
+        Map<String, IntermediateWeight> intermediateWeights = calculateIntermediateWeights(type, selectedQuestionIds);
+
+        List<WeightedDiseaseScore> result = new ArrayList<>();
+
+        for (Disease disease : kb.diseases().values()) {
+            List<String> deps = kb.rules().get(disease.id());
+            if (deps == null || deps.isEmpty()) continue;
+
+            List<IntermediateWeight> usedWeights = new ArrayList<>();
+            double sumWeights = 0.0;
+
+            for (String dep : deps) {
+                IntermediateWeight iw = intermediateWeights.get(dep);
+                if (iw != null) {
+                    usedWeights.add(iw);
+                    sumWeights += iw.weight();
+                }
+            }
+
+            double divisor = deps.size() > 0 ? deps.size() : 1;
+            double finalPercentage = sumWeights / divisor;
+            result.add(new WeightedDiseaseScore(disease.id(), disease.name(), disease.category(), finalPercentage, usedWeights));
+        }
+
+        return result;
+    }
+
+    public static List<DiagnosisResult> diagnoseWeightedBased(String type, Set<String> selectedQuestionIds, double threshold) {
+        List<WeightedDiseaseScore> scores = calculateWeightedDiseaseScores(type, selectedQuestionIds);
+        List<DiagnosisResult> results = new ArrayList<>();
+
+        for (WeightedDiseaseScore score : scores) {
+            if (score.percentage() >= threshold) {
+                results.add(new DiagnosisResult(score.diseaseId(), score.diseaseName(), score.category(), score.percentage(), true));
+            }
+        }
+
+        results.sort((a, b) -> Double.compare(b.percentage(), a.percentage()));
+        return results;
+    }
+
     public static List<DiagnosisResult> diagnose(Set<String> selectedQuestionIds, boolean ruleBased) {
         return diagnose(TYPE_INFEKSI, selectedQuestionIds, ruleBased);
     }
@@ -269,25 +341,73 @@ public final class ExpertSystemEngine {
     private static KnowledgeBase buildInfeksiKnowledgeBase() {
         KnowledgeBaseBuilder builder = new KnowledgeBaseBuilder(TYPE_INFEKSI, "Infeksi dan Non Infeksi");
 
-        builder.addQuestion("1", "Apakah anda mengalami demam ringan (suhu 37.5-39°C, meningkat bertahap, menggigil ringan)?", "demam");
-        builder.addQuestion("2", "Apakah anda mengalami batuk kering (berdahak ringan, frekuensi >3x/jam)?", "batuk");
-        builder.addQuestion("3", "Apakah anda mengalami pilek (hidung tersumbat, berair, cairan bening encer, bersin berulang)?", "pilek");
-        builder.addQuestion("4", "Apakah anda mengalami sakit tenggorokan (nyeri saat menelan, kemerahan pada faring)?", "sakit tenggorokan");
-        builder.addQuestion("5", "Apakah anda mengalami demam tinggi mendadak (suhu >39°C, naik turun selama 2-7 hari)?", "demam tinggi");
-        builder.addQuestion("6", "Apakah anda mengalami nyeri sendi (nyeri pada otot dan tulang)?", "nyeri sendi");
-        builder.addQuestion("7", "Apakah anda mengalami ruam kulit (bintik merah, tidak hilang saat ditekan, uji torniket positif)?", "ruam kulit");
-        builder.addQuestion("8", "Apakah anda mengalami mual (muntah >2x/hari, nafsu makan turun)?", "mual");
-        builder.addQuestion("9", "Apakah anda sering haus (minum >3 liter/hari)?", "sering haus");
-        builder.addQuestion("10", "Apakah anda sering buang air kecil (>8x/hari, terutama pada malam hari)?", "sering buang air kecil");
-        builder.addQuestion("11", "Apakah anda mudah lelah (energi cepat habis, kadar gula darah >200 mg/dL)?", "mudah lelah");
-        builder.addQuestion("12", "Apakah luka anda sulit sembuh (infeksi berulang, penyembuhan >2 minggu)?", "luka sulit sembuh");
-        builder.addQuestion("13", "Apakah anda sering sakit kepala (berdenyut, terutama di bagian belakang kepala)?", "sakit kepala");
-        builder.addQuestion("14", "Apakah anda sering pusing (terasa berputar dan ringan saat berubah posisi)?", "pusing");
-        builder.addQuestion("15", "Apakah penglihatan anda sering kabur (gangguan visual sementara, penyempitan pembuluh retina)?", "penglihatan kabur");
-        builder.addQuestion("16", "Apakah tekanan darah anda tinggi (konsisten ≥140/90 mmHg, detak jantung meningkat)?", "tekanan darah tinggi");
-        builder.addQuestion("17", "Apakah anda mengalami mimisan (perdarahan dari hidung)?", "mimisan");
+        // === Sub-gejala Influenza (Pernafasan) ===
+        builder.addQuestion("1", "Apakah suhu tubuh anda 37.5–39°C?", "Suhu 37.5–39°C");
+        builder.addQuestion("2", "Apakah suhu tubuh meningkat bertahap?", "Suhu meningkat bertahap");
+        builder.addQuestion("3", "Apakah anda mengalami menggigil ringan?", "Menggigil ringan");
+        builder.addQuestion("4", "Apakah anda mengalami batuk kering?", "Batuk kering");
+        builder.addQuestion("5", "Apakah anda berdahak ringan?", "Berdahak ringan");
+        builder.addQuestion("6", "Apakah frekuensi batuk anda >3x/jam?", "Frekuensi batuk >3x/jam");
+        builder.addQuestion("7", "Apakah hidung anda tersumbat?", "Hidung tersumbat");
+        builder.addQuestion("8", "Apakah hidung anda berair?", "Hidung berair");
+        builder.addQuestion("9", "Apakah cairan hidung bening dan encer?", "Cairan bening encer");
+        builder.addQuestion("10", "Apakah anda bersin berulang?", "Bersin berulang");
+        builder.addQuestion("11", "Apakah anda mengalami nyeri saat menelan?", "Nyeri saat menelan");
+        builder.addQuestion("12", "Apakah terdapat kemerahan ringan pada faring?", "Kemerahan ringan pada faring");
 
-        builder.addDisease("22", "Influenza", "Infeksi",
+        // === Sub-gejala Demam Berdarah (Infeksi Virus) ===
+        builder.addQuestion("13", "Apakah suhu tubuh anda >39°C secara mendadak?", "Suhu >39°C mendadak");
+        builder.addQuestion("14", "Apakah pola demam naik turun selama 2–7 hari?", "Pola 2–7 hari suhu turun naik");
+        builder.addQuestion("15", "Apakah anda mengalami nyeri pada otot?", "Nyeri pada otot");
+        builder.addQuestion("16", "Apakah anda mengalami nyeri pada tulang?", "Nyeri pada tulang");
+        builder.addQuestion("17", "Apakah muncul bintik merah pada kulit?", "Bintik merah");
+        builder.addQuestion("18", "Apakah bintik tidak hilang saat ditekan?", "Bintik tidak hilang saat ditekan");
+        builder.addQuestion("19", "Apakah hasil uji torniket positif?", "Uji torniket positif");
+        builder.addQuestion("20", "Apakah anda muntah >2x/hari?", "Muntah >2x/hari");
+        builder.addQuestion("21", "Apakah nafsu makan anda turun?", "Nafsu makan turun");
+
+        // === Sub-gejala Diabetes (Metabolik) ===
+        builder.addQuestion("22", "Apakah anda minum >3 liter/hari?", "Minum >3 liter/hari");
+        builder.addQuestion("23", "Apakah anda buang air kecil >8x/hari?", "Buang air kecil >8x/hari");
+        builder.addQuestion("24", "Apakah anda sering buang air kecil pada malam hari?", "Sering buang air kecil malam hari");
+        builder.addQuestion("25", "Apakah energi anda cepat habis?", "Energi cepat habis");
+        builder.addQuestion("26", "Apakah kadar gula darah anda >200 mg/dL?", "Kadar gula darah >200 mg/dL");
+        builder.addQuestion("27", "Apakah anda mengalami infeksi berulang?", "Infeksi berulang");
+        builder.addQuestion("28", "Apakah penyembuhan luka anda >2 minggu?", "Penyembuhan luka >2 minggu");
+
+        // === Sub-gejala Hipertensi (Kardiovaskular) ===
+        builder.addQuestion("29", "Apakah sakit kepala terjadi pada pagi hari?", "Sakit kepala pagi hari");
+        builder.addQuestion("30", "Apakah sakit kepala berdenyut?", "Sakit kepala berdenyut");
+        builder.addQuestion("31", "Apakah nyeri terutama di bagian belakang kepala?", "Nyeri belakang kepala");
+        builder.addQuestion("32", "Apakah anda merasa berputar?", "Terasa berputar");
+        builder.addQuestion("33", "Apakah anda merasa ringan saat berubah posisi?", "Ringan saat berubah posisi");
+        builder.addQuestion("34", "Apakah anda mengalami gangguan visual sementara?", "Gangguan visual sementara");
+        builder.addQuestion("35", "Apakah retina mengalami penyempitan pembuluh?", "Penyempitan pembuluh retina");
+        builder.addQuestion("36", "Apakah tekanan darah anda konsisten ≥140/90 mmHg?", "Tekanan darah ≥140/90 mmHg");
+        builder.addQuestion("37", "Apakah detak jantung anda meningkat?", "Detak jantung meningkat");
+        builder.addQuestion("38", "Apakah anda mengalami perdarahan dari hidung (mimisan)?", "Perdarahan dari hidung");
+
+        // === Derived Nodes (Fakta Turunan) ===
+        builder.addDerivedNode("39", "Demam");
+        builder.addDerivedNode("40", "Batuk");
+        builder.addDerivedNode("41", "Pilek");
+        builder.addDerivedNode("42", "Sakit Tenggorokan");
+        builder.addDerivedNode("43", "Demam Tinggi");
+        builder.addDerivedNode("44", "Nyeri Sendi");
+        builder.addDerivedNode("45", "Ruam Kulit");
+        builder.addDerivedNode("46", "Mual");
+        builder.addDerivedNode("47", "Sering Haus");
+        builder.addDerivedNode("48", "Sering Buang Air Kecil");
+        builder.addDerivedNode("49", "Mudah Lelah");
+        builder.addDerivedNode("50", "Luka Sulit Sembuh");
+        builder.addDerivedNode("51", "Sakit Kepala");
+        builder.addDerivedNode("52", "Pusing");
+        builder.addDerivedNode("53", "Penglihatan Kabur");
+        builder.addDerivedNode("54", "Tekanan Darah Tinggi");
+        builder.addDerivedNode("55", "Mimisan");
+
+        // === Diseases ===
+        builder.addDisease("56", "Influenza", "Infeksi",
                 "Penyakit infeksi (menular) pada saluran pernafasan yang disebabkan oleh virus influenza. "
                         + "Gejala meliputi demam ringan (37.5-39°C) yang meningkat bertahap disertai menggigil ringan, "
                         + "batuk kering dengan dahak ringan (frekuensi >3x/jam), pilek dengan hidung tersumbat dan berair "
@@ -297,7 +417,7 @@ public final class ExpertSystemEngine {
                         + "orang lain untuk mencegah penularan, gunakan masker, dan segera periksakan diri ke dokter "
                         + "bila gejala memburuk.");
 
-        builder.addDisease("23", "Demam Berdarah", "Infeksi",
+        builder.addDisease("57", "Demam Berdarah", "Infeksi",
                 "Penyakit infeksi (menular) yang disebabkan oleh virus dengue melalui gigitan nyamuk Aedes aegypti. "
                         + "Gejala meliputi demam tinggi mendadak (>39°C) dengan pola naik turun selama 2-7 hari, "
                         + "nyeri pada otot dan tulang, ruam kulit berupa bintik merah (tidak hilang saat ditekan, "
@@ -305,7 +425,7 @@ public final class ExpertSystemEngine {
                 "Perbanyak minum cairan, segera ke rumah sakit untuk pemantauan trombosit, hindari penggunaan "
                         + "aspirin, lakukan fogging dan 3M (Menguras, Menutup, Mengubur) untuk pencegahan nyamuk.");
 
-        builder.addDisease("24", "Diabetes", "Non-Infeksi",
+        builder.addDisease("58", "Diabetes", "Non-Infeksi",
                 "Penyakit non-infeksi (tidak menular/kronis) yang ditandai dengan tingginya kadar gula darah "
                         + "(>200 mg/dL). Gejala meliputi sering haus (minum >3 liter/hari), sering buang air kecil "
                         + "(>8x/hari terutama malam hari), mudah lelah dengan energi cepat habis, serta luka sulit "
@@ -313,7 +433,7 @@ public final class ExpertSystemEngine {
                 "Jaga pola makan sehat dan rendah gula, olahraga teratur, kontrol kadar gula darah secara "
                         + "berkala, konsumsi obat sesuai resep dokter, dan jaga berat badan ideal.");
 
-        builder.addDisease("25", "Hipertensi", "Non-Infeksi",
+        builder.addDisease("59", "Hipertensi", "Non-Infeksi",
                 "Penyakit non-infeksi (tidak menular/kronis) yang ditandai dengan tekanan darah tinggi konsisten "
                         + "(≥140/90 mmHg). Gejala meliputi sakit kepala berdenyut terutama di bagian belakang, pusing "
                         + "berputar dan terasa ringan saat berubah posisi, penglihatan kabur (gangguan visual sementara, "
@@ -322,10 +442,30 @@ public final class ExpertSystemEngine {
                 "Kurangi konsumsi garam, olahraga teratur, kelola stres, hindari rokok dan alkohol, kontrol "
                         + "tekanan darah secara berkala, dan konsumsi obat antihipertensi sesuai resep dokter.");
 
-        builder.addRule("22", "1", "2", "3", "4");
-        builder.addRule("23", "5", "6", "7", "8");
-        builder.addRule("24", "9", "10", "11", "12");
-        builder.addRule("25", "13", "14", "15", "16", "17");
+        // === Rules: Derived nodes ← sub-gejala ===
+        builder.addRule("39", "1", "2", "3");           // Demam ← suhu 37.5-39, meningkat bertahap, menggigil
+        builder.addRule("40", "4", "5", "6");           // Batuk ← kering, dahak ringan, >3x/jam
+        builder.addRule("41", "7", "8", "9", "10");     // Pilek ← tersumbat, berair, bening encer, bersin
+        builder.addRule("42", "11", "12");              // Sakit Tenggorokan ← nyeri menelan, kemerahan faring
+        builder.addRule("43", "13", "14");              // Demam Tinggi ← >39°C mendadak, pola 2-7 hari
+        builder.addRule("44", "15", "16");              // Nyeri Sendi ← nyeri otot, nyeri tulang
+        builder.addRule("45", "17", "18", "19");        // Ruam Kulit ← bintik merah, tidak hilang, torniket+
+        builder.addRule("46", "20", "21");              // Mual ← muntah >2x, nafsu makan turun
+        builder.addRule("47", "22");                    // Sering Haus ← minum >3L/hari
+        builder.addRule("48", "23", "24");              // Sering BAK ← >8x/hari, malam hari
+        builder.addRule("49", "25", "26");              // Mudah Lelah ← energi habis, gula >200
+        builder.addRule("50", "27", "28");              // Luka Sulit Sembuh ← infeksi berulang, >2 minggu
+        builder.addRule("51", "29", "30", "31");        // Sakit Kepala ← pagi, berdenyut, belakang
+        builder.addRule("52", "32", "33");              // Pusing ← berputar, ringan saat posisi berubah
+        builder.addRule("53", "34", "35");              // Penglihatan Kabur ← visual sementara, penyempitan
+        builder.addRule("54", "36", "37");              // Tekanan Darah Tinggi ← >=140/90, detak meningkat
+        builder.addRule("55", "38");                    // Mimisan ← perdarahan hidung
+
+        // === Rules: Diseases ← derived nodes ===
+        builder.addRule("56", "39", "40", "41", "42");          // Influenza ← Demam, Batuk, Pilek, Sakit Tenggorokan
+        builder.addRule("57", "43", "44", "45", "46");          // Demam Berdarah ← Demam Tinggi, Nyeri Sendi, Ruam Kulit, Mual
+        builder.addRule("58", "47", "48", "49", "50");          // Diabetes ← Sering Haus, Sering BAK, Mudah Lelah, Luka Sulit Sembuh
+        builder.addRule("59", "51", "52", "53", "54", "55");    // Hipertensi ← Sakit Kepala, Pusing, Penglihatan Kabur, TD Tinggi, Mimisan
 
         return builder.build();
     }

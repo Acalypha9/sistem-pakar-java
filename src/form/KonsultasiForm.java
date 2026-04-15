@@ -18,6 +18,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class KonsultasiForm extends JInternalFrame {
@@ -27,7 +28,7 @@ public class KonsultasiForm extends JInternalFrame {
     private JButton btnDiagnosis;
     private JComboBox<String> cbMetode;
     private JComboBox<String> cbThreshold;
-    private JTextArea txtPersentase;
+    private JEditorPane txtBobot;
     private JEditorPane txtRule;
     private CardLayout rightPanelLayout;
     private JPanel rightPanelCards;
@@ -102,13 +103,14 @@ public class KonsultasiForm extends JInternalFrame {
         leftArea.setOpaque(false);
         leftArea.add(leftScroll, BorderLayout.CENTER);
 
-        txtPersentase = new JTextArea();
-        txtPersentase.setEditable(false);
-        txtPersentase.setFont(new Font("Tahoma", Font.PLAIN, 12));
-        txtPersentase.setBackground(Color.WHITE);
-        txtPersentase.setMargin(new Insets(8, 8, 8, 8));
-        JScrollPane percentageScroll = new JScrollPane(txtPersentase);
-        percentageScroll.setBorder(BorderFactory.createLineBorder(new Color(226, 232, 240)));
+        txtBobot = new JEditorPane();
+        txtBobot.setEditable(false);
+        txtBobot.setContentType("text/html");
+        txtBobot.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+        txtBobot.setBackground(Color.WHITE);
+        txtBobot.setText(buildEmptyBobotHtml());
+        JScrollPane bobotScroll = new JScrollPane(txtBobot);
+        bobotScroll.setBorder(BorderFactory.createLineBorder(new Color(226, 232, 240)));
 
         txtRule = new JEditorPane();
         txtRule.setEditable(false);
@@ -122,7 +124,7 @@ public class KonsultasiForm extends JInternalFrame {
         rightPanelLayout = new CardLayout();
         rightPanelCards = new JPanel(rightPanelLayout);
         rightPanelCards.add(ruleScroll, "RULE");
-        rightPanelCards.add(percentageScroll, "PERCENTAGE");
+        rightPanelCards.add(bobotScroll, "PERCENTAGE");
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, leftArea, rightPanelCards);
         splitPane.setResizeWeight(0.65);
@@ -166,7 +168,7 @@ public class KonsultasiForm extends JInternalFrame {
         JLabel lblThreshold = new JLabel("Threshold : ");
         lblThreshold.setFont(UIStyle.FONT_LABEL);
         actionPanel.add(lblThreshold);
-        cbThreshold = new JComboBox<>(new String[]{"50", "60", "70", "80", "90", "100"});
+        cbThreshold = new JComboBox<>(new String[]{"50", "55", "60", "65", "70", "75", "80", "85", "90", "95", "100"});
         cbThreshold.setSelectedItem("80");
         cbThreshold.setPreferredSize(new Dimension(65, 26));
         cbThreshold.addActionListener(e -> updateDiagnosisPreview());
@@ -237,7 +239,7 @@ public class KonsultasiForm extends JInternalFrame {
         double threshold = Double.parseDouble(String.valueOf(cbThreshold.getSelectedItem()));
         List<ExpertSystemEngine.DiagnosisResult> results = isRuleBased
                 ? ExpertSystemEngine.diagnoseRuleBased(diagnosisType, selectedQuestionIds)
-                : ExpertSystemEngine.diagnosePercentageBased(diagnosisType, selectedQuestionIds, threshold);
+                : ExpertSystemEngine.diagnoseWeightedBased(diagnosisType, selectedQuestionIds, threshold);
 
         String mainDiseaseName = results.isEmpty() ? "Sehat" : results.get(0).diseaseName();
         double mainPercentage = results.isEmpty() ? 0.0 : results.get(0).percentage();
@@ -317,7 +319,7 @@ public class KonsultasiForm extends JInternalFrame {
 
         Set<String> selectedIds = getSelectedQuestionIds();
         if (selectedIds.isEmpty()) {
-            txtPersentase.setText("");
+            txtBobot.setText(buildEmptyBobotHtml());
             txtRule.setText(buildEmptyRuleHtml());
             lblResult.setText("\u2014");
             return;
@@ -335,9 +337,11 @@ public class KonsultasiForm extends JInternalFrame {
             return;
         }
 
-        List<ExpertSystemEngine.DiagnosisResult> results = ExpertSystemEngine.diagnosePercentageBased(diagnosisType, selectedIds, threshold);
-        txtPersentase.setText(formatScores(scores));
-        txtPersentase.setCaretPosition(0);
+        Map<String, ExpertSystemEngine.IntermediateWeight> intermediateWeights = ExpertSystemEngine.calculateIntermediateWeights(diagnosisType, selectedIds);
+        List<ExpertSystemEngine.WeightedDiseaseScore> weightedScores = ExpertSystemEngine.calculateWeightedDiseaseScores(diagnosisType, selectedIds);
+        List<ExpertSystemEngine.DiagnosisResult> results = ExpertSystemEngine.diagnoseWeightedBased(diagnosisType, selectedIds, threshold);
+        txtBobot.setText(buildBobotPreviewHtml(intermediateWeights, weightedScores, results));
+        txtBobot.setCaretPosition(0);
         lblResult.setText(formatDiagnosisResults(results));
     }
 
@@ -412,16 +416,166 @@ public class KonsultasiForm extends JInternalFrame {
         SwingUtilities.invokeLater(this::updateQuestionRowHeights);
     }
 
-    private String formatScores(List<ExpertSystemEngine.DiseaseScore> scores) {
-        scores.sort((a, b) -> Double.compare(b.percentage(), a.percentage()));
-        StringBuilder sb = new StringBuilder();
-        for (ExpertSystemEngine.DiseaseScore score : scores) {
-            sb.append(score.diseaseName())
-                    .append(" : ")
-                    .append(String.format("%.2f%%", score.percentage()))
-                    .append("\n");
+    private String buildEmptyBobotHtml() {
+        return "<html><body style='font-family:Tahoma,sans-serif;background:#fff;padding:12px;'>"
+                + "<div style='font-size:16px;font-weight:bold;color:#a14f00;margin-bottom:6px;'>Penyelesaian dengan bobot (weighted)</div>"
+                + "<div style='height:3px;background:#ffcf33;margin-bottom:2px;'></div>"
+                + "<div style='height:3px;background:#8cc63f;margin-bottom:14px;'></div>"
+                + "<div style='font-size:12px;color:#666;'>Pilih gejala pada tabel kiri untuk melihat perhitungan bobot.</div>"
+                + "</body></html>";
+    }
+
+    private String buildBobotPreviewHtml(
+            Map<String, ExpertSystemEngine.IntermediateWeight> intermediateWeights,
+            List<ExpertSystemEngine.WeightedDiseaseScore> weightedScores,
+            List<ExpertSystemEngine.DiagnosisResult> results) {
+
+        StringBuilder html = new StringBuilder();
+        html.append("<html><body style='font-family:Tahoma,sans-serif;background:#fff;padding:12px;'>");
+        html.append("<div style='font-size:16px;font-weight:bold;color:#a14f00;margin-bottom:6px;'>Penyelesaian dengan bobot (weighted)</div>");
+        html.append("<div style='height:3px;background:#ffcf33;margin-bottom:2px;'></div>");
+        html.append("<div style='height:3px;background:#8cc63f;margin-bottom:14px;'></div>");
+
+        html.append("<div style='font-size:13px;font-weight:bold;color:#333;margin-bottom:8px;'>Diagnosis Antara (Bobot Intermediate):</div>");
+
+        boolean anyIntermediate = false;
+        for (ExpertSystemEngine.IntermediateWeight iw : intermediateWeights.values()) {
+            if (iw.matched() == 0) continue;
+            anyIntermediate = true;
+            appendIntermediateBlock(html, iw);
         }
-        return sb.toString();
+
+        if (!anyIntermediate) {
+            html.append("<div style='font-size:12px;color:#666;margin-bottom:14px;'>Tidak ada diagnosis antara yang relevan.</div>");
+        }
+
+        html.append("<div style='font-size:13px;font-weight:bold;color:#333;margin-top:14px;margin-bottom:8px;'>Diagnosis Akhir (Bobot Akumulasi):</div>");
+
+        boolean anyFinal = false;
+        for (ExpertSystemEngine.WeightedDiseaseScore ws : weightedScores) {
+            if (ws.percentage() <= 0.0) continue;
+            anyFinal = true;
+            appendWeightedDiseaseBlock(html, ws, intermediateWeights);
+        }
+
+        if (!anyFinal) {
+            html.append("<div style='font-size:12px;color:#666;'>Tidak ada diagnosis akhir yang relevan.</div>");
+        }
+
+        boolean hasDetected = !results.isEmpty();
+        html.append("<div style='margin-top:14px;padding:8px;background:")
+                .append(hasDetected ? "#e6ffe6;border:1px solid #4a4" : "#fff3e0;border:1px solid #e0a030")
+                .append(";font-size:13px;'>");
+        if (hasDetected) {
+            StringBuilder sb = new StringBuilder();
+            for (ExpertSystemEngine.DiagnosisResult r : results) {
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(esc(r.diseaseName()))
+                        .append(" (").append(String.format("%.2f%%", r.percentage())).append(")");
+            }
+            html.append("<b>Hasil:</b> ").append(sb.toString());
+        } else {
+            html.append("<b>Hasil:</b> Tidak ada penyakit yang memenuhi threshold.");
+        }
+        html.append("</div>");
+
+        html.append("</body></html>");
+        return html.toString();
+    }
+
+    private void appendIntermediateBlock(StringBuilder html, ExpertSystemEngine.IntermediateWeight iw) {
+        boolean allMatch = iw.matched() == iw.total();
+
+        html.append("<div style='border:1px solid ").append(allMatch ? "#4a4" : "#ccc")
+                .append(";background:").append(allMatch ? "#f0fff0" : "#fafafa")
+                .append(";padding:8px;margin-bottom:8px;font-size:12px;line-height:1.6;'>");
+
+        html.append("<div style='font-weight:bold;margin-bottom:4px;'>")
+                .append(esc(iw.label()))
+                .append(" (").append(esc(iw.nodeId())).append(")</div>");
+
+        html.append("<b>IF</b> ");
+        List<String> deps = iw.dependencies();
+        for (int i = 0; i < deps.size(); i++) {
+            if (i > 0) html.append(" <b>AND</b> ");
+            String dep = deps.get(i);
+            boolean matched = getSelectedQuestionIds().contains(dep);
+            html.append("<span style='color:").append(matched ? "#008000" : "#999").append(";'>")
+                    .append(matched ? "\u2713 " : "\u2717 ")
+                    .append(esc(getRulePhrase(dep)))
+                    .append("</span>");
+        }
+
+        html.append("<br><b>THEN</b> <span style='color:")
+                .append(allMatch ? "#008000" : "#b8860b")
+                .append(";font-weight:bold;'>")
+                .append(esc(iw.label()))
+                .append("</span>");
+
+        html.append(" &rarr; <b>Bobot: ").append(String.format("%.2f%%", iw.weight())).append("</b>");
+        html.append(" (").append(iw.matched()).append("/").append(iw.total()).append(" gejala terpenuhi)");
+
+        html.append("</div>");
+    }
+
+    private void appendWeightedDiseaseBlock(StringBuilder html, ExpertSystemEngine.WeightedDiseaseScore ws,
+                                              Map<String, ExpertSystemEngine.IntermediateWeight> allIntermediateWeights) {
+        List<String> deps = ExpertSystemEngine.getDependencies(diagnosisType, ws.diseaseId());
+        boolean allFull = true;
+        for (String dep : deps) {
+            ExpertSystemEngine.IntermediateWeight iw = allIntermediateWeights.get(dep);
+            if (iw == null || iw.weight() < 100.0) {
+                allFull = false;
+                break;
+            }
+        }
+
+        html.append("<div style='border:1px solid ").append(allFull ? "#4a4" : "#ccc")
+                .append(";background:").append(allFull ? "#f0fff0" : "#fafafa")
+                .append(";padding:8px;margin-bottom:8px;font-size:12px;line-height:1.6;'>");
+
+        html.append("<div style='font-weight:bold;margin-bottom:4px;'>")
+                .append(esc(ws.diseaseName()))
+                .append("</div>");
+
+        html.append("<b>IF</b> ");
+        for (int i = 0; i < deps.size(); i++) {
+            if (i > 0) html.append(" <b>AND</b> ");
+            String dep = deps.get(i);
+            ExpertSystemEngine.IntermediateWeight iw = allIntermediateWeights.get(dep);
+            double weight = iw != null ? iw.weight() : 0.0;
+            boolean full = weight >= 100.0;
+            String label = ExpertSystemEngine.getNodeLabel(diagnosisType, dep);
+            html.append("<span style='color:").append(full ? "#008000" : weight > 0 ? "#b8860b" : "#999").append(";'>")
+                    .append(full ? "\u2713 " : weight > 0 ? "\u25cb " : "\u2717 ")
+                    .append(esc(label))
+                    .append(" (").append(String.format("%.2f%%", weight)).append(")")
+                    .append("</span>");
+        }
+
+        html.append("<br><b>THEN</b> <span style='color:")
+                .append(allFull ? "#008000" : "#b8860b")
+                .append(";font-weight:bold;'>")
+                .append(esc(ws.diseaseName()))
+                .append("</span>");
+
+        if (allFull) {
+            html.append(" <span style='color:#008000;font-weight:bold;'>\u2714 TERPENUHI</span>");
+        }
+
+        html.append("<br><b>Perhitungan:</b> (");
+        for (int i = 0; i < deps.size(); i++) {
+            if (i > 0) html.append(" + ");
+            String dep = deps.get(i);
+            ExpertSystemEngine.IntermediateWeight iw = allIntermediateWeights.get(dep);
+            double weight = iw != null ? iw.weight() : 0.0;
+            html.append(String.format("%.2f%%", weight));
+        }
+        double perDep = 100.0 / deps.size();
+        html.append(") &times; ").append(String.format("%.2f%%", perDep));
+        html.append(" = <b style='color:#003;'>").append(String.format("%.2f%%", ws.percentage())).append("</b>");
+
+        html.append("</div>");
     }
 
     private String buildEmptyRuleHtml() {
