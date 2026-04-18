@@ -494,10 +494,9 @@ public class KonsultasiForm extends JInternalFrame {
                 .append(esc(iw.label()))
                 .append(" (").append(esc(iw.nodeId())).append(")</div>");
 
-        html.append("<b>IF</b> ");
         List<String> deps = iw.dependencies();
         for (int i = 0; i < deps.size(); i++) {
-            if (i > 0) html.append(" <b>AND</b> ");
+            if (i > 0) html.append(", ");
             String dep = deps.get(i);
             boolean matched = getSelectedQuestionIds().contains(dep);
             html.append("<span style='color:").append(matched ? "#008000" : "#999").append(";'>")
@@ -506,7 +505,7 @@ public class KonsultasiForm extends JInternalFrame {
                     .append("</span>");
         }
 
-        html.append("<br><b>THEN</b> <span style='color:")
+        html.append("<br><span style='color:")
                 .append(allMatch ? "#008000" : "#b8860b")
                 .append(";font-weight:bold;'>")
                 .append(esc(iw.label()))
@@ -538,9 +537,8 @@ public class KonsultasiForm extends JInternalFrame {
                 .append(esc(ws.diseaseName()))
                 .append("</div>");
 
-        html.append("<b>IF</b> ");
         for (int i = 0; i < deps.size(); i++) {
-            if (i > 0) html.append(" <b>AND</b> ");
+            if (i > 0) html.append(", ");
             String dep = deps.get(i);
             ExpertSystemEngine.IntermediateWeight iw = allIntermediateWeights.get(dep);
             double weight = iw != null ? iw.weight() : 0.0;
@@ -553,7 +551,7 @@ public class KonsultasiForm extends JInternalFrame {
                     .append("</span>");
         }
 
-        html.append("<br><b>THEN</b> <span style='color:")
+        html.append("<br><span style='color:")
                 .append(allFull ? "#008000" : "#b8860b")
                 .append(";font-weight:bold;'>")
                 .append(esc(ws.diseaseName()))
